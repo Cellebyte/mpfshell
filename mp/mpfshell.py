@@ -697,7 +697,7 @@ class MpFileShell(cmd.Cmd):
     complete_putc = complete_mpyc
 
 
-def get_available_ports(raw=False) -> [str]:
+def get_available_ports(raw=False) -> list[str]:
     try:
         ports = comports()
         if raw is False:
