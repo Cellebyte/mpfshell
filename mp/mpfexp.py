@@ -25,11 +25,11 @@ import ast
 import binascii
 import getpass
 import logging
-import os
-import posixpath  # force posix-style slashes
+from pathlib import PosixPath
 import re
 import sre_constants
 import subprocess
+from typing import Union
 
 from mp.conbase import ConError
 from mp.conserial import ConSerial
@@ -52,7 +52,7 @@ def _was_file_not_existing(exception):
     """
 
     stre = str(exception)
-    return any(err in stre for err in ("ENOENT", "ENODEV", "EINVAL", "OSError:"))
+    return any(err in stre for err in ("ENOENT", "ENODEV", "EINVAL"))
 
 
 class RemoteIOError(IOError):
@@ -147,7 +147,9 @@ class MpFileExplorer(Pyboard):
         return con
 
     def _fqn(self, name):
-        return posixpath.join(self.dir, name)
+        if self.dir:
+            return PosixPath(self.dir, name)
+        return PosixPath(name)
 
     def __set_sysname(self):
         self.sysname = self.eval("uos.uname()[0]").decode("utf-8")
@@ -175,7 +177,7 @@ class MpFileExplorer(Pyboard):
         # New version mounts files on /flash so lets set dir based on where we are in
         # filesystem.
         # Using the "path.join" to make sure we get "/" if "os.getcwd" returns "".
-        self.dir = posixpath.join("/", self.eval("uos.getcwd()").decode("utf8"))
+        self.dir = PosixPath("/", self.eval("uos.getcwd()").decode("utf8"))
 
         self.__set_sysname()
 
@@ -254,16 +256,14 @@ class MpFileExplorer(Pyboard):
 
     @retry(PyboardError, tries=MAX_TRIES, delay=1, backoff=2, logger=logging.root)
     def put(self, src, dst=None):
-
-        f = open(src, "rb")
-        data = f.read()
-        f.close()
+        data = None
+        with open(src, "rb") as file:
+            data = file.read()
 
         if dst is None:
             dst = src
 
         try:
-
             self.exec_("f = open('%s', 'wb')" % self._fqn(dst))
 
             while True:
@@ -285,19 +285,15 @@ class MpFileExplorer(Pyboard):
                 raise e
 
     def mput(self, src_dir, pat, verbose=False):
-
+        source_path = PosixPath(src_dir)
         try:
-
             find = re.compile(pat)
-            files = os.listdir(src_dir)
-
-            for f in files:
-                if os.path.isfile(f) and find.match(f):
-                    if verbose:
-                        print(" * put %s" % f)
-
-                    self.put(posixpath.join(src_dir, f), f)
-
+            if source_path.is_dir():
+                for f in source_path.iterdir():
+                    if f.is_file() and find.match(f):
+                        if verbose:
+                            print(f" * put {f}")
+                        self.put(source_path.joinpath(f), f)
         except sre_constants.error as e:
             raise RemoteIOError("Error in regular expression: %s" % e)
 
@@ -335,7 +331,7 @@ class MpFileExplorer(Pyboard):
         f.close()
 
     def mget(self, dst_dir, pat, verbose=False):
-
+        dst_dir = PosixPath(dst_dir)
         try:
 
             files = self.ls(add_dirs=False)
@@ -345,8 +341,8 @@ class MpFileExplorer(Pyboard):
                 if find.match(f):
                     if verbose:
                         print(" * get %s" % f)
-
-                    self.get(f, dst=posixpath.join(dst_dir, f))
+                    if isinstance(f, str):
+                        self.get(f, dst=dst_dir.joinpath(f))
 
         except sre_constants.error as e:
             raise RemoteIOError("Error in regular expression: %s" % e)
@@ -420,8 +416,8 @@ class MpFileExplorer(Pyboard):
 
         if target.startswith("/"):
             tmp_dir = target
-        elif target == "..":
-            tmp_dir, _ = os.path.split(self.dir)
+        elif target == ".." and self.dir:
+            tmp_dir = PosixPath(self.dir).parent
         else:
             tmp_dir = self._fqn(target)
 
@@ -441,17 +437,14 @@ class MpFileExplorer(Pyboard):
         return self.dir
 
     @retry(PyboardError, tries=MAX_TRIES, delay=1, backoff=2, logger=logging.root)
-    def md(self, target):
-
+    def md(self, dir):
         try:
-
-            self.eval("uos.mkdir('%s')" % self._fqn(target))
-
+            self.eval("uos.mkdir('%s')" % self._fqn(dir))
         except PyboardError as e:
             if _was_file_not_existing(e):
-                raise RemoteIOError("Invalid directory name: %s" % target)
+                raise RemoteIOError("Invalid directory name: %s" % dir)
             elif "EEXIST" in str(e):
-                raise RemoteIOError("File or directory exists: %s" % target)
+                raise RemoteIOError("File or directory exists: %s" % dir)
             else:
                 raise e
 
@@ -485,7 +478,9 @@ class MpFileExplorerCaching(MpFileExplorer):
 
         return None
 
-    def ls(self, add_files=True, add_dirs=True, add_details=False):
+    def ls(
+        self, add_files=True, add_dirs=True, add_details=False
+    ) -> Union[list[tuple[str, str]], list[str]]:
 
         hit = self.__cache_hit(self.dir)
 
@@ -509,10 +504,9 @@ class MpFileExplorerCaching(MpFileExplorer):
 
         if dst is None:
             dst = src
-
-        path = os.path.split(self._fqn(dst))
-        newitm = path[-1]
-        parent = path[:-1][0]
+        path = self._fqn(dst)
+        parent = path.parent
+        newitm = path.name
 
         hit = self.__cache_hit(parent)
 
@@ -524,9 +518,9 @@ class MpFileExplorerCaching(MpFileExplorer):
 
         MpFileExplorer.puts(self, dst, lines)
 
-        path = os.path.split(self._fqn(dst))
-        newitm = path[-1]
-        parent = path[:-1][0]
+        path = self._fqn(dst)
+        parent = path.parent
+        newitm = path.name
 
         hit = self.__cache_hit(parent)
 
@@ -538,9 +532,9 @@ class MpFileExplorerCaching(MpFileExplorer):
 
         MpFileExplorer.md(self, dir)
 
-        path = os.path.split(self._fqn(dir))
-        newitm = path[-1]
-        parent = path[:-1][0]
+        path = self._fqn(dir)
+        parent = path.parent
+        newitm = path.name
 
         hit = self.__cache_hit(parent)
 
@@ -552,9 +546,9 @@ class MpFileExplorerCaching(MpFileExplorer):
 
         MpFileExplorer.rm(self, target)
 
-        path = os.path.split(self._fqn(target))
-        rmitm = path[-1]
-        parent = path[:-1][0]
+        path = self._fqn(target)
+        parent = path.parent
+        rmitm = path.name
 
         hit = self.__cache_hit(parent)
 

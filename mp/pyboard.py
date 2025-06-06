@@ -133,7 +133,7 @@ class Pyboard:
         self.con.write(b"\x04")
 
         # check if we could exec command
-        data = self.read_until(2, b"OK", timeout=0.5)
+        data = self.read_until(2, b"OK", timeout=1)
         if data != b"OK":
             raise PyboardError("could not exec command")
 

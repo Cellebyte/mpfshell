@@ -35,17 +35,17 @@ class ConSerial(ConBase):
         ConBase.__init__(self)
 
         try:
-            self.serial = Serial(port, baudrate=baudrate, interCharTimeout=1)
+            self.serial = Serial(port, baudrate=baudrate, inter_byte_timeout=1)
 
             if reset:
                 logging.info("Hard resetting device at port: %s" % port)
 
-                self.serial.setDTR(True)
+                self.serial.dtr = True
                 time.sleep(0.25)
-                self.serial.setDTR(False)
+                self.serial.dtr = False
 
                 self.serial.close()
-                self.serial = Serial(port, baudrate=baudrate, interCharTimeout=1)
+                self.serial = Serial(port, baudrate=baudrate, inter_byte_timeout=1)
 
                 while True:
                     time.sleep(2.0)
@@ -70,7 +70,7 @@ class ConSerial(ConBase):
         return self.serial.write(data)
 
     def inWaiting(self):
-        return self.serial.inWaiting()
+        return self.serial.in_waiting
 
     def survives_soft_reset(self):
         return False

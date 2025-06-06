@@ -1,2 +1,44 @@
 [tool.ruff]
 ignore = ["F403", "E501", "E722", "N802", "N803", "N806", "C901", "D100", "D102", "D102", "D10"]
+
+[project]
+name = "mpfshell"
+version = "0.9.4"
+description = "A simple shell based file explorer for ESP8266 and WiPy Micropython devices" 
+authors = [
+    {name = "Stefan Wendler",email = "sw@kaltpost.de"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pyserial (>=3.5,<4.0)",
+    "colorama (>=0.3.6,<0.4.0)",
+    "websocket-client (>=0.35.0,<0.36.0)",
+    "telnetlib-313-and-up (>=3.13.1,<4.0.0) ; python_version >= '3.13'"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tools.poetry.scripts]
+mpfshell = 'mp.mpfshell:main'
+
+[tool.poetry]
+packages = [
+    { include = "mp" },
+]
+
+[tool.isort]
+include_trailing_comma = true
+line_length = 120
+force_grid_wrap = 0
+multi_line_output = 3
+
+
+[tool.poetry.group.dev.dependencies]
+flake8 = "^7.2.0"
+isort = "^6.0.1"
+

@@ -22,7 +22,6 @@
 # THE SOFTWARE.
 ##
 import argparse
-import binascii
 import cmd
 import glob
 import io
@@ -37,20 +36,26 @@ import colorama
 import serial
 from serial.tools.list_ports import comports
 
-from mp import version
+from importlib.metadata import version, metadata
 from mp.conbase import ConError
 from mp.mpfexp import MpFileExplorer
 from mp.mpfexp import MpFileExplorerCaching
 from mp.mpfexp import RemoteIOError
 from mp.pyboard import PyboardError
 from mp.tokenizer import Tokenizer
+from typing import IO
 
 
 class MpFileShell(cmd.Cmd):
+    version = version("mpfshell")
+    metadata = metadata("mpfshell")
+    mail = metadata.json["author_email"]
+
     def __init__(self, color=False, caching=False, reset=False):
         if color:
             colorama.init()
-            cmd.Cmd.__init__(self, stdout=colorama.initialise.wrapped_stdout)
+            if colorama.initialise.wrapped_stdout:
+                cmd.Cmd.__init__(self, stdout=colorama.initialise.wrapped_stdout)  # type: ignore
         else:
             cmd.Cmd.__init__(self)
 
@@ -60,7 +65,6 @@ class MpFileShell(cmd.Cmd):
         self.color = color
         self.caching = caching
         self.reset = reset
-
         self.fe = None
         self.repl = None
         self.tokenizer = Tokenizer()
@@ -76,16 +80,16 @@ class MpFileShell(cmd.Cmd):
             self.intro = (
                 "\n"
                 + colorama.Fore.GREEN
-                + "** Micropython File Shell v%s, sw@kaltpost.de ** " % version.FULL
+                + f"** Micropython File Shell v{self.version}, {self.mail} ** "
                 + colorama.Fore.RESET
                 + "\n"
             )
         else:
             self.intro = (
-                "\n** Micropython File Shell v%s, sw@kaltpost.de **\n" % version.FULL
+                f"\n** Micropython File Shell v{self.version}, {self.mail} **\n"
             )
 
-        self.intro += "-- Running on Python %d.%d using PySerial %s --\n" % (
+        self.intro += "-- Running on Python {0}.{1} using PySerial {2} --\n".format(
             sys.version_info[0],
             sys.version_info[1],
             serial.VERSION,
@@ -98,23 +102,15 @@ class MpFileShell(cmd.Cmd):
             pwd = "/"
 
         if self.color:
-            self.prompt = (
-                colorama.Fore.BLUE
-                + "mpfs ["
-                + colorama.Fore.YELLOW
-                + pwd
-                + colorama.Fore.BLUE
-                + "]> "
-                + colorama.Fore.RESET
-            )
+            self.prompt = f"{colorama.Fore.BLUE}mpfs [{colorama.Fore.YELLOW}{pwd}{colorama.Fore.BLUE}]> {colorama.Fore.RESET}"
         else:
-            self.prompt = "mpfs [" + pwd + "]> "
+            self.prompt = f'mpfs ["{pwd}"]> '
 
     def __error(self, msg):
         if self.color:
-            print("\n" + colorama.Fore.RED + msg + colorama.Fore.RESET + "\n")
+            print(f"\n{colorama.Fore.RED}{msg}{colorama.Fore.RESET}\n")
         else:
-            print("\n" + msg + "\n")
+            print(f"\n{msg}\n")
 
     def __connect(self, port):
         try:
@@ -227,32 +223,24 @@ class MpFileShell(cmd.Cmd):
         if self.__is_open():
             try:
                 files = self.fe.ls(add_details=True)
-
                 if self.fe.pwd() != "/":
                     files = [("..", "D")] + files
-
-                print("\nRemote files in '%s':\n" % self.fe.pwd())
-
+                    print("\nRemote files in '%s':\n" % self.fe.pwd())
                 for elem, type in files:
                     if type == "F":
                         if self.color:
                             print(
-                                colorama.Fore.CYAN
-                                + ("       %s" % elem)
-                                + colorama.Fore.RESET
+                                f"{colorama.Fore.CYAN}       {elem}{colorama.Fore.RESET}"
                             )
                         else:
-                            print("       %s" % elem)
+                            print(f"       {elem}")
                     else:
                         if self.color:
                             print(
-                                colorama.Fore.MAGENTA
-                                + (" <dir> %s" % elem)
-                                + colorama.Fore.RESET
+                                f"{colorama.Fore.MAGENTA} <dir> {elem}{colorama.Fore.RESET}"
                             )
                         else:
-                            print(" <dir> %s" % elem)
-
+                            print(f" <dir> {elem}")
                 print("")
 
             except IOError as e:
@@ -524,7 +512,7 @@ class MpFileShell(cmd.Cmd):
         except Exception:
             files = []
 
-        return [i for i in files if i.startswith(args[0])]
+        return [i for i in files if isinstance(i, str) and i.startswith(args[0])]
 
     def do_cat(self, args):
         """cat <REMOTE FILE>
@@ -880,7 +868,7 @@ def main():
     else:
         logging.basicConfig(format=format, level=logging.CRITICAL)
 
-    logging.info("Micropython File Shell v%s started" % version.FULL)
+    logging.info("Micropython File Shell v%s started" % MpFileShell.version)
     logging.info(
         "Running on Python %d.%d using PySerial %s"
         % (sys.version_info[0], sys.version_info[1], serial.VERSION)

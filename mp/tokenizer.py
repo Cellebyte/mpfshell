@@ -66,7 +66,7 @@ class Tokenizer(object):
             (r"[ ]", lambda scanner, token: None),
         ]
 
-        self.scanner = re.Scanner(tokens)
+        self.scanner = re.Scanner(tokens)  # type: ignore
 
     def tokenize(self, string):
 
